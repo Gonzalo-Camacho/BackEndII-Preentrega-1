@@ -1,0 +1,24 @@
+{
+  "name": "backendii",
+  "version": "1.0.0",
+  "description": "API REST para plataforma de eventos e inscripciones",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "keywords": [
+    "backend",
+    "express",
+    "eventos"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
