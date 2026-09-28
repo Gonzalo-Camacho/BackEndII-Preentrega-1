@@ -6,7 +6,7 @@ API REST para una plataforma de eventos e inscripciones.
 
 Plataforma de Eventos e Inscripciones.
 
-El proyecto proporciona la estructura inicial de una API REST orientada a la gestión de eventos, usuarios y sesiones.
+El proyecto implementa la estructura de una API REST orientada a la gestión de eventos, usuarios y sesiones, utilizando una arquitectura organizada por capas.
 
 ## Tecnologías
 
@@ -14,6 +14,8 @@ El proyecto proporciona la estructura inicial de una API REST orientada a la ges
 * Express
 * JavaScript
 * ESM (ECMAScript Modules)
+* Mongoose
+* MongoDB
 * dotenv
 * Nodemon
 
@@ -21,6 +23,7 @@ El proyecto proporciona la estructura inicial de una API REST orientada a la ges
 
 * Node.js
 * npm
+* MongoDB
 
 ## Instalación
 
@@ -52,6 +55,12 @@ JWT_SECRET=change_this_secret
 
 El archivo `.env` no debe subirse al repositorio.
 
+La configuración de las variables de entorno se centraliza en:
+
+```text
+src/config/env.config.js
+```
+
 ## Ejecución
 
 Para iniciar el servidor:
@@ -72,6 +81,38 @@ Por defecto, el servidor se ejecuta en:
 http://localhost:8080
 ```
 
+## Arquitectura
+
+El proyecto utiliza una arquitectura por capas para separar las responsabilidades de la aplicación.
+
+Para el recurso `events`, el flujo es:
+
+```text
+Route
+  ↓
+Controller
+  ↓
+Service
+  ↓
+Repository
+  ↓
+DAO
+  ↓
+Model
+```
+
+Los controladores reciben las solicitudes HTTP y delegan la lógica a los servicios. Los servicios utilizan repositorios y DAO para acceder a los modelos de datos.
+
+El recurso `sessions` actualmente utiliza:
+
+```text
+Route
+  ↓
+Controller
+  ↓
+Service
+```
+
 ## Estructura del proyecto
 
 ```text
@@ -80,14 +121,26 @@ BackEndII/
 │   ├── app.js
 │   ├── server.js
 │   ├── config/
-│   ├── routes/
+│   │   └── env.config.js
 │   ├── controllers/
-│   ├── services/
-│   ├── repositories/
+│   │   ├── events.controller.js
+│   │   └── sessions.controller.js
 │   ├── dao/
-│   ├── models/
+│   │   └── event.dao.js
 │   ├── middlewares/
-│   └── utils/
+│   │   ├── error.middleware.js
+│   │   └── notFound.middleware.js
+│   ├── models/
+│   │   ├── Event.js
+│   │   └── User.js
+│   ├── repositories/
+│   │   └── event.repository.js
+│   ├── routes/
+│   │   ├── events.router.js
+│   │   └── sessions.router.js
+│   └── services/
+│       ├── events.service.js
+│       └── sessions.service.js
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -118,7 +171,18 @@ Respuesta:
 GET /api/events
 ```
 
-Respuesta inicial:
+Este endpoint utiliza la arquitectura por capas:
+
+```text
+events.router.js
+→ events.controller.js
+→ events.service.js
+→ event.repository.js
+→ event.dao.js
+→ Event.js
+```
+
+Respuesta:
 
 ```json
 {
@@ -133,7 +197,9 @@ Respuesta inicial:
 GET /api/sessions
 ```
 
-Respuesta inicial:
+Este endpoint delega desde el controller hacia el service.
+
+Respuesta:
 
 ```json
 {
@@ -142,11 +208,57 @@ Respuesta inicial:
 }
 ```
 
-## Modelos base
+## Manejo de errores
 
-Actualmente se incluyen modelos base para:
+La aplicación cuenta con middleware centralizado para el manejo de errores.
 
-* User
-* Event
+Las rutas inexistentes generan una respuesta HTTP `404`.
 
-Estos modelos forman parte de la estructura inicial y serán ampliados en futuras etapas del proyecto.
+Ejemplo:
+
+```json
+{
+  "status": "error",
+  "message": "Ruta no encontrada: GET /api/ruta-inexistente"
+}
+```
+
+Los errores generados durante el procesamiento de las solicitudes son derivados al middleware centralizado:
+
+```text
+src/middlewares/error.middleware.js
+```
+
+## Modelos
+
+El proyecto utiliza Mongoose para definir modelos con esquemas y validaciones.
+
+### User
+
+El modelo `User` incluye:
+
+* `firstName`
+* `lastName`
+* `email`
+* `password`
+* `role`
+
+El esquema incluye campos obligatorios, restricciones de longitud, email único y valores permitidos para el rol.
+
+### Event
+
+El modelo `Event` incluye:
+
+* `title`
+* `description`
+* `date`
+* `location`
+* `capacity`
+
+El esquema incluye campos obligatorios, restricciones de longitud y validación de capacidad mínima.
+
+Los modelos se encuentran en:
+
+```text
+src/models/
+```
