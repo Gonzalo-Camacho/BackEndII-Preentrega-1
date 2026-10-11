@@ -3,7 +3,7 @@ export const notFoundHandler = (req, res, next) => {
     `Ruta no encontrada: ${req.method} ${req.originalUrl}`
   );
 
-  error.status = 404;
+  error.statusCode = 404;
 
   next(error);
 };

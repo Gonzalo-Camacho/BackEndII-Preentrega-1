@@ -19,6 +19,8 @@ El proyecto implementa una API REST orientada a la gestión de eventos, usuarios
 * bcrypt
 * dotenv
 * Nodemon
+* jsonwebtoken
+* cookie-parser
 
 ## Requisitos
 
@@ -52,6 +54,7 @@ PORT=8080
 NODE_ENV=development
 MONGO_URL=mongodb://localhost:27017/backendii
 JWT_SECRET=change_this_secret
+JWT_EXPIRES_IN=1h
 ```
 
 El archivo `.env` no debe subirse al repositorio.
@@ -138,6 +141,7 @@ BackEndII/
 │   │   ├── event.dao.js
 │   │   └── users.dao.js
 │   ├── middlewares/
+│   │   ├── auth.middleware.js
 │   │   ├── error.middleware.js
 │   │   └── notFound.middleware.js
 │   ├── models/
@@ -153,7 +157,8 @@ BackEndII/
 │   │   ├── events.service.js
 │   │   └── sessions.service.js
 │   └── utils/
-│       └── hash.js
+│       ├── hash.js
+│       └── jwt.js
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -276,18 +281,14 @@ La contraseña nunca se incluye en la respuesta.
 
 ### Validaciones del registro
 
-El endpoint valida:
+El endpoint de registro valida:
 
-* presencia de los campos obligatorios;
-* formato del email;
-* longitud mínima de la contraseña;
-* emails duplicados.
+* Presencia de los campos obligatorios.
+* Formato del email.
+* Longitud mínima de la contraseña.
+* Emails duplicados.
 
-Para un email ya registrado se devuelve:
-
-```http
-409 Conflict
-```
+Para un email ya registrado se devuelve `409 Conflict`:
 
 ```json
 {
@@ -296,11 +297,97 @@ Para un email ya registrado se devuelve:
 }
 ```
 
-Para datos inválidos se devuelve:
+Para datos inválidos se devuelve `400 Bad Request`.
 
-```http
-400 Bad Request
+### Inicio de sesión
+
+#### Login
+
+`POST /api/sessions/login`
+
+Permite iniciar sesión con un usuario registrado.
+
+Cuerpo de la solicitud:
+
+```json
+{
+  "email": "ana@mail.com",
+  "password": "Secreta123"
+}
 ```
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "message": "Login correcto"
+}
+```
+
+La respuesta establece una cookie llamada `currentUser` que contiene un token JWT. La cookie utiliza `HttpOnly`, `SameSite=Lax` y una duración de una hora. En producción también utiliza el atributo `Secure`.
+
+Si las credenciales son incorrectas o el usuario no existe, se devuelve `401 Unauthorized`:
+
+```json
+{
+  "status": "error",
+  "message": "Credenciales inválidas"
+}
+```
+
+#### Obtener el usuario autenticado
+
+`GET /api/sessions/current`
+
+Requiere una cookie `currentUser` válida. El middleware verifica el JWT y coloca su contenido en `req.user`.
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "id": "665f2a...",
+    "email": "ana@mail.com",
+    "role": "user"
+  }
+}
+```
+
+Si la cookie no existe, el token es inválido o expiró, se devuelve `401 Unauthorized`:
+
+```json
+{
+  "status": "error",
+  "message": "No autenticado"
+}
+```
+
+#### Cerrar sesión
+
+`POST /api/sessions/logout`
+
+Elimina la cookie `currentUser`.
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "message": "Sesión cerrada"
+}
+```
+
+### Autenticación con JWT
+
+El token se genera mediante `jsonwebtoken`, se firma utilizando `JWT_SECRET` y contiene los campos `id`, `email` y `role`. Su duración se configura con `JWT_EXPIRES_IN`, cuyo valor predeterminado es `1h`.
+
+La lógica de generación y verificación se encuentra en `src/utils/jwt.js`. El middleware `src/middlewares/auth.middleware.js` valida el token antes de permitir el acceso a la ruta protegida `/api/sessions/current`.
+
+Las contraseñas se comparan mediante `bcrypt`; nunca se guardan en texto plano ni se incluyen en las respuestas de autenticación.
+
+No se debe compartir el token ni subir el archivo `.env` al repositorio.
 
 ## Manejo de errores
 

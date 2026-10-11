@@ -3,7 +3,11 @@ import {
   getUserByEmail,
   saveUser
 } from "../repositories/users.repository.js";
-import { hashPassword } from "../utils/hash.js";
+import {
+  hashPassword,
+  comparePassword
+} from "../utils/hash.js";
+import { generateToken } from "../utils/jwt.js";
 
 export const getSessions = async () => {
   return getAllSessions();
@@ -42,4 +46,19 @@ export const registerUser = async ({
     email: user.email,
     role: user.role
   };
+};
+
+export const loginUser = async ({ email, password }) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await getUserByEmail(normalizedEmail);
+
+  if (!user || !(await comparePassword(password, user.password))) {
+    const error = new Error("Credenciales inválidas");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const token = generateToken(user);
+
+  return { token };
 };
