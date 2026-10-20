@@ -1,32 +1,34 @@
 # BackEndII
 
-API REST para una plataforma de eventos e inscripciones.
+API REST para una plataforma de eventos e inscripciones, desarrollada con Node.js, Express y MongoDB.
 
 ## Tema
 
 Plataforma de Eventos e Inscripciones.
 
-El proyecto implementa una API REST orientada a la gestión de eventos, usuarios y sesiones, utilizando una arquitectura organizada por capas.
+El proyecto implementa una API REST para gestionar eventos, usuarios y sesiones, utilizando una arquitectura organizada por capas.
 
 ## Tecnologías
 
-* Node.js
-* Express
-* JavaScript
-* ESM (ECMAScript Modules)
-* Mongoose
-* MongoDB
-* bcrypt
-* dotenv
-* Nodemon
-* jsonwebtoken
-* cookie-parser
+- Node.js
+- Express
+- JavaScript con módulos ESM
+- Mongoose
+- MongoDB
+- bcrypt
+- dotenv
+- Nodemon
+- jsonwebtoken
+- cookie-parser
+- Passport.js
+- passport-custom
+- passport-jwt
 
 ## Requisitos
 
-* Node.js
-* npm
-* MongoDB
+- Node.js
+- npm
+- MongoDB
 
 ## Instalación
 
@@ -45,9 +47,9 @@ npm install
 
 ## Configuración de variables de entorno
 
-Crear un archivo `.env` a partir de `.env.example`.
+Crear un archivo `.env` a partir de `.env.example` y configurar las variables para el entorno local.
 
-Variables disponibles:
+Variables utilizadas por la aplicación:
 
 ```env
 PORT=8080
@@ -57,13 +59,9 @@ JWT_SECRET=change_this_secret
 JWT_EXPIRES_IN=1h
 ```
 
-El archivo `.env` no debe subirse al repositorio.
+Estos valores son ilustrativos. Deben adaptarse a la configuración local, especialmente `MONGO_URL` y `JWT_SECRET`. No se deben publicar credenciales reales.
 
-La configuración de las variables de entorno se centraliza en:
-
-```text
-src/config/env.config.js
-```
+El archivo `.env` no debe subirse al repositorio. La configuración se centraliza en `src/config/env.config.js`.
 
 ## Ejecución
 
@@ -81,15 +79,13 @@ npm run dev
 
 Por defecto, el servidor se ejecuta en:
 
-```text
-http://localhost:8080
-```
+`http://localhost:8080`
 
 ## Arquitectura
 
-El proyecto utiliza una arquitectura por capas para separar las responsabilidades de la aplicación.
+El proyecto utiliza una arquitectura por capas para separar responsabilidades.
 
-Para los recursos que utilizan persistencia, el flujo es:
+Para los recursos que utilizan persistencia, el flujo general es:
 
 ```text
 Route
@@ -105,24 +101,11 @@ DAO
 Model
 ```
 
-Los controladores reciben las solicitudes HTTP y delegan la lógica a los servicios. Los servicios contienen la lógica de negocio y utilizan repositorios y DAO para acceder a los modelos de datos.
+Los controladores reciben las solicitudes HTTP y gestionan las respuestas. Los servicios contienen la lógica de negocio y utilizan repositorios y DAO para acceder a los modelos de datos.
 
-El registro de usuarios utiliza el siguiente flujo:
+Las estrategias de autenticación se configuran en `src/config/passport.config.js`. Las estrategias de registro y login utilizan el repositorio de usuarios para consultar y guardar información.
 
-```text
-sessions.router.js
-→ sessions.controller.js
-→ sessions.service.js
-→ users.repository.js
-→ users.dao.js
-→ User.js
-```
-
-El hash de contraseñas se realiza mediante un helper reutilizable ubicado en:
-
-```text
-src/utils/hash.js
-```
+El hash y la comparación de contraseñas se realizan mediante helpers ubicados en `src/utils/hash.js`.
 
 ## Estructura del proyecto
 
@@ -133,7 +116,8 @@ BackEndII/
 │   ├── server.js
 │   ├── config/
 │   │   ├── database.config.js
-│   │   └── env.config.js
+│   │   ├── env.config.js
+│   │   └── passport.config.js
 │   ├── controllers/
 │   │   ├── events.controller.js
 │   │   └── sessions.controller.js
@@ -170,9 +154,9 @@ BackEndII/
 
 ### Health check
 
-```http
-GET /api/health
-```
+`GET /api/health`
+
+Comprueba que el servidor está activo.
 
 Respuesta:
 
@@ -185,11 +169,11 @@ Respuesta:
 
 ### Eventos
 
-```http
-GET /api/events
-```
+`GET /api/events`
 
-Este endpoint utiliza la arquitectura por capas:
+Obtiene los eventos mediante la arquitectura por capas.
+
+Flujo:
 
 ```text
 events.router.js
@@ -200,7 +184,7 @@ events.router.js
 → Event.js
 ```
 
-Respuesta:
+Respuesta ilustrativa cuando no hay eventos:
 
 ```json
 {
@@ -213,28 +197,17 @@ Respuesta:
 
 #### Obtener sesiones
 
-```http
-GET /api/sessions
-```
+`GET /api/sessions`
 
-Respuesta:
-
-```json
-{
-  "status": "success",
-  "payload": []
-}
-```
+Obtiene la información de sesiones que expone el servicio.
 
 #### Registrar usuario
 
-```http
-POST /api/sessions/register
-```
+`POST /api/sessions/register`
 
-Este endpoint permite registrar un nuevo usuario.
+Permite registrar un nuevo usuario.
 
-El cuerpo de la solicitud debe contener:
+Cuerpo de la solicitud:
 
 ```json
 {
@@ -245,24 +218,19 @@ El cuerpo de la solicitud debe contener:
 }
 ```
 
-Los campos obligatorios son:
+Los campos obligatorios son `first_name`, `last_name`, `email` y `password`.
 
-* `first_name`
-* `last_name`
-* `email`
-* `password`
+La estrategia `register` de Passport:
 
-El email se normaliza eliminando espacios y convirtiéndolo a minúsculas.
+- Valida la presencia de los campos obligatorios.
+- Comprueba el formato del email.
+- Exige una contraseña de al menos seis caracteres.
+- Elimina espacios externos del email y lo convierte a minúsculas.
+- Comprueba que el email no esté registrado.
+- Genera un hash de la contraseña con bcrypt.
+- Asigna el rol `user` a los usuarios registrados públicamente.
 
-La contraseña se almacena utilizando un hash generado con `bcrypt`.
-
-El rol no puede ser definido durante el registro público. Todos los usuarios registrados mediante este endpoint reciben:
-
-```json
-"role": "user"
-```
-
-Respuesta exitosa:
+Respuesta exitosa (`201 Created`):
 
 ```json
 {
@@ -277,31 +245,11 @@ Respuesta exitosa:
 }
 ```
 
-La contraseña nunca se incluye en la respuesta.
+La contraseña no se incluye en la respuesta.
 
-### Validaciones del registro
+Si faltan campos o hay datos inválidos, se devuelve `400 Bad Request`. Si el email ya está registrado, se devuelve `409 Conflict`.
 
-El endpoint de registro valida:
-
-* Presencia de los campos obligatorios.
-* Formato del email.
-* Longitud mínima de la contraseña.
-* Emails duplicados.
-
-Para un email ya registrado se devuelve `409 Conflict`:
-
-```json
-{
-  "status": "error",
-  "message": "El email ya está registrado"
-}
-```
-
-Para datos inválidos se devuelve `400 Bad Request`.
-
-### Inicio de sesión
-
-#### Login
+#### Inicio de sesión
 
 `POST /api/sessions/login`
 
@@ -316,6 +264,8 @@ Cuerpo de la solicitud:
 }
 ```
 
+La estrategia `login` busca el usuario por email y compara la contraseña con el hash almacenado.
+
 Respuesta exitosa (`200 OK`):
 
 ```json
@@ -325,22 +275,17 @@ Respuesta exitosa (`200 OK`):
 }
 ```
 
-La respuesta establece una cookie llamada `currentUser` que contiene un token JWT. La cookie utiliza `HttpOnly`, `SameSite=Lax` y una duración de una hora. En producción también utiliza el atributo `Secure`.
+La respuesta establece una cookie llamada `currentUser` que contiene un JWT. La cookie utiliza `HttpOnly`, `SameSite=Lax` y una duración de una hora. En producción también utiliza el atributo `Secure`.
 
-Si las credenciales son incorrectas o el usuario no existe, se devuelve `401 Unauthorized`:
-
-```json
-{
-  "status": "error",
-  "message": "Credenciales inválidas"
-}
-```
+Si faltan campos obligatorios, se devuelve `400 Bad Request`. Si el usuario no existe o la contraseña es incorrecta, se devuelve `401 Unauthorized` con el mensaje genérico `Credenciales inválidas`.
 
 #### Obtener el usuario autenticado
 
 `GET /api/sessions/current`
 
-Requiere una cookie `currentUser` válida. El middleware verifica el JWT y coloca su contenido en `req.user`.
+Requiere una cookie `currentUser` con un JWT válido.
+
+La estrategia `current` de Passport verifica el token extraído de la cookie y coloca la identidad autenticada en `req.user`.
 
 Respuesta exitosa (`200 OK`):
 
@@ -355,14 +300,7 @@ Respuesta exitosa (`200 OK`):
 }
 ```
 
-Si la cookie no existe, el token es inválido o expiró, se devuelve `401 Unauthorized`:
-
-```json
-{
-  "status": "error",
-  "message": "No autenticado"
-}
-```
+Si la cookie no existe o el token es inválido o ha expirado, se devuelve `401 Unauthorized`.
 
 #### Cerrar sesión
 
@@ -379,15 +317,39 @@ Respuesta exitosa (`200 OK`):
 }
 ```
 
-### Autenticación con JWT
+## Autenticación con Passport y JWT
 
-El token se genera mediante `jsonwebtoken`, se firma utilizando `JWT_SECRET` y contiene los campos `id`, `email` y `role`. Su duración se configura con `JWT_EXPIRES_IN`, cuyo valor predeterminado es `1h`.
+La autenticación se centraliza en `src/config/passport.config.js`. Passport se inicializa en `src/app.js` mediante `passport.initialize()`, después de `cookie-parser`.
 
-La lógica de generación y verificación se encuentra en `src/utils/jwt.js`. El middleware `src/middlewares/auth.middleware.js` valida el token antes de permitir el acceso a la ruta protegida `/api/sessions/current`.
+### Estrategias configuradas
 
-Las contraseñas se comparan mediante `bcrypt`; nunca se guardan en texto plano ni se incluyen en las respuestas de autenticación.
+- **`register` (`passport-custom`):** valida los datos del registro, normaliza el email, comprueba duplicados, genera el hash de la contraseña y asigna el rol `user`.
+- **`login` (`passport-custom`):** valida las credenciales comparando la contraseña enviada con el hash almacenado.
+- **`current` (`passport-jwt`):** extrae el JWT de la cookie `currentUser`, verifica su validez y proporciona los datos de identidad autenticados.
 
-No se debe compartir el token ni subir el archivo `.env` al repositorio.
+El token se genera mediante `jsonwebtoken` en `src/utils/jwt.js`. Se firma con `JWT_SECRET`, incluye `id`, `email` y `role`, y utiliza la duración configurada por `JWT_EXPIRES_IN`, cuyo valor predeterminado es `1h`.
+
+La cookie utiliza las opciones `HttpOnly` y `SameSite=Lax`; `Secure` se activa en producción. El endpoint de logout elimina la cookie.
+
+Las contraseñas se almacenan mediante bcrypt y nunca se guardan en texto plano.
+
+### Pruebas realizadas
+
+Se verificaron los siguientes casos:
+
+- Registro correcto: `201 Created`.
+- Login correcto: `200 OK`.
+- `/api/sessions/current` con cookie válida: `200 OK`.
+- Logout correcto: `200 OK`.
+- `/api/sessions/current` después del logout: `401 Unauthorized`.
+- Login con contraseña incorrecta: `401 Unauthorized`.
+- Registro con email duplicado: `409 Conflict`.
+
+### Proveedores externos futuros
+
+La arquitectura podría ampliarse con estrategias Passport para proveedores como Google o GitHub. Esto requeriría configurar las credenciales del proveedor, implementar las rutas y el flujo de autorización, y vincular la identidad externa con un usuario local.
+
+Estos proveedores son una posible extensión futura; no están implementados en esta versión.
 
 ## Manejo de errores
 
@@ -404,11 +366,7 @@ Ejemplo:
 }
 ```
 
-Los errores generados durante el procesamiento de las solicitudes son derivados al middleware centralizado:
-
-```text
-src/middlewares/error.middleware.js
-```
+Los errores generados durante el procesamiento de las solicitudes se derivan al middleware centralizado ubicado en `src/middlewares/error.middleware.js`.
 
 ## Modelos
 
@@ -418,38 +376,24 @@ El proyecto utiliza Mongoose para definir modelos con esquemas y validaciones.
 
 El modelo `User` incluye:
 
-* `first_name`
-* `last_name`
-* `email`
-* `password`
-* `role`
+- `first_name`
+- `last_name`
+- `email`
+- `password`
+- `role`
 
-El esquema incluye:
-
-* campos obligatorios;
-* restricciones de longitud;
-* email único;
-* email normalizado;
-* contraseña con longitud mínima;
-* valores permitidos para el rol (`user`, `organizer`, `admin`);
-* rol `user` por defecto.
-
-Las contraseñas se almacenan utilizando `bcrypt`.
+El esquema incluye campos obligatorios, restricciones de longitud, email único y normalizado, longitud mínima de contraseña y valores permitidos para el rol (`user`, `organizer`, `admin`). El rol predeterminado es `user`.
 
 ### Event
 
 El modelo `Event` incluye:
 
-* `title`
-* `description`
-* `date`
-* `location`
-* `capacity`
+- `title`
+- `description`
+- `date`
+- `location`
+- `capacity`
 
 El esquema incluye campos obligatorios, restricciones de longitud y validación de capacidad mínima.
 
-Los modelos se encuentran en:
-
-```text
-src/models/
-```
+Los modelos se encuentran en `src/models/`.
