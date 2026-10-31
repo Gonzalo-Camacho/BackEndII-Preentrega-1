@@ -1,4 +1,3 @@
-
 import {
   findAllEvents,
   createEvent,
@@ -6,8 +5,8 @@ import {
   updateEvent
 } from "../dao/event.dao.js";
 
-export const getAllEvents = async () => {
-  return findAllEvents();
+export const getAllEvents = async (filters = {}) => {
+  return findAllEvents(filters);
 };
 
 export const saveEvent = async (eventData) => {

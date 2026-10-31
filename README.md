@@ -196,33 +196,110 @@ Respuesta:
 
 ### Eventos
 
+La entidad `Event` representa los eventos disponibles en la plataforma. Cada evento está asociado a un usuario con rol `organizer`, mediante una referencia ObjectId al modelo `User`.
+
 #### Obtener eventos
 
 `GET /api/events`
 
 No requiere autenticación.
 
-Obtiene los eventos publicados. Los eventos cancelados no se incluyen en el listado público.
+Permite consultar los eventos publicados y finalizados. Los eventos en estado `draft` o `cancelled` no se incluyen en el listado público.
 
-Flujo:
+La consulta admite filtros, paginación y ordenamiento.
+
+**Filtros disponibles:**
+
+| Parámetro | Descripción |
+|---|---|
+| `status` | Filtra por estado `published` o `finished`. |
+| `category` | Filtra por categoría. |
+| `location` | Filtra por ubicación. |
+| `dateFrom` | Fecha mínima del evento. |
+| `dateTo` | Fecha máxima del evento. |
+
+Los filtros de categoría y ubicación permiten buscar coincidencias parciales sin distinguir mayúsculas y minúsculas.
+
+**Paginación:**
+
+| Parámetro | Descripción |
+|---|---|
+| `page` | Número de página. Por defecto: `1`. |
+| `limit` | Cantidad de resultados por página. Por defecto: `10`. Máximo: `100`. |
+
+**Ordenamiento:**
+
+El parámetro `sort` permite ordenar los resultados. Se admite el prefijo `-` para indicar orden descendente.
+
+Campos disponibles:
+
+- `date`
+- `title`
+- `price`
+- `capacity`
+- `createdAt`
+
+Ejemplos:
 
 ```text
-events.router.js
-→ events.controller.js
-→ events.service.js
-→ event.repository.js
-→ event.dao.js
-→ Event.js
+GET /api/events?status=published
+GET /api/events?category=workshop
+GET /api/events?location=Buenos%20Aires
+GET /api/events?dateFrom=2027-01-01&dateTo=2027-12-31
+GET /api/events?page=2&limit=5
+GET /api/events?sort=date
+GET /api/events?sort=-price
+GET /api/events?status=published&category=workshop&page=2&limit=5
 ```
 
-Respuesta ilustrativa cuando no hay eventos:
+La respuesta incluye los eventos encontrados y los datos de paginación:
 
 ```json
 {
   "status": "success",
-  "payload": []
+  "payload": [],
+  "page": 1,
+  "limit": 10,
+  "total": 0,
+  "totalPages": 0
 }
 ```
+
+#### Obtener un evento por ID
+
+`GET /api/events/:id`
+
+No requiere autenticación.
+
+Permite consultar un evento individual siempre que se encuentre publicado o finalizado.
+
+Ejemplo:
+
+```text
+GET /api/events/665f2a...
+```
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "_id": "665f2a...",
+    "title": "Conferencia de tecnología",
+    "description": "Encuentro sobre desarrollo de software",
+    "category": "Tecnología",
+    "date": "2027-06-15T18:00:00.000Z",
+    "location": "Buenos Aires",
+    "capacity": 50,
+    "price": 1000,
+    "status": "published",
+    "organizer": "665f2a..."
+  }
+}
+```
+
+Si el evento no existe o no está disponible para consulta pública, se devuelve `404 Not Found`.
 
 #### Crear evento
 
@@ -239,15 +316,19 @@ Cuerpo de la solicitud:
 {
   "title": "Conferencia de tecnología",
   "description": "Encuentro sobre desarrollo de software",
+  "category": "Tecnología",
   "date": "2027-06-15T18:00:00.000Z",
   "location": "Buenos Aires",
-  "capacity": 50
+  "capacity": 50,
+  "price": 1000
 }
 ```
 
-El sistema obtiene el identificador del organizador desde el usuario autenticado. No permite establecer libremente el organizador mediante el cuerpo de la solicitud.
+El sistema obtiene automáticamente el identificador del organizador desde `req.user`.
 
-Los eventos se crean inicialmente con estado `published`.
+No permite establecer libremente el organizador mediante el cuerpo de la solicitud.
+
+El estado inicial predeterminado es `draft`. También se admite indicar `published` al crear el evento.
 
 Respuesta exitosa (`201 Created`):
 
@@ -258,48 +339,42 @@ Respuesta exitosa (`201 Created`):
     "_id": "665f2a...",
     "title": "Conferencia de tecnología",
     "description": "Encuentro sobre desarrollo de software",
+    "category": "Tecnología",
     "date": "2027-06-15T18:00:00.000Z",
     "location": "Buenos Aires",
     "capacity": 50,
-    "organizer": "665f2a...",
-    "status": "published"
+    "price": 1000,
+    "status": "draft",
+    "organizer": "665f2a..."
   }
 }
 ```
 
-#### Modificar o cancelar evento
+Un usuario con rol `user` recibe `403 Forbidden`. Una solicitud sin autenticación válida recibe `401 Unauthorized`.
 
-`PATCH /api/events/:id`
+#### Modificar evento
+
+`PUT /api/events/:id`
 
 Requiere autenticación y uno de los siguientes roles:
 
 - `organizer`
 - `admin`
 
-Un organizador solamente puede modificar sus propios eventos. Un administrador puede modificar cualquier evento.
+Un organizador solamente puede modificar sus propios eventos. Un administrador puede modificar eventos de cualquier organizador.
 
-Se pueden enviar únicamente los campos que se desean modificar.
+Se pueden enviar los campos que se desean actualizar, sin necesidad de enviar nuevamente todos los datos.
 
-Ejemplo de solicitud:
-
-```json
-{
-  "title": "Conferencia de tecnología actualizada"
-}
-```
-
-Para cancelar un evento, se puede actualizar su estado:
+Ejemplo:
 
 ```json
 {
-  "status": "cancelled"
+  "title": "Conferencia de tecnología actualizada",
+  "price": 1500
 }
 ```
 
-Los estados permitidos son:
-
-- `published`
-- `cancelled`
+No se permite modificar eventos cancelados. El estado del evento debe cambiarse mediante el endpoint específico de modificación de estado.
 
 Respuesta exitosa (`200 OK`):
 
@@ -309,6 +384,7 @@ Respuesta exitosa (`200 OK`):
   "payload": {
     "_id": "665f2a...",
     "title": "Conferencia de tecnología actualizada",
+    "price": 1500,
     "status": "published"
   }
 }
@@ -316,7 +392,70 @@ Respuesta exitosa (`200 OK`):
 
 Si el evento no existe, se devuelve `404 Not Found`.
 
-Si el organizador intenta modificar un evento que pertenece a otro usuario, se devuelve `403 Forbidden`.
+Si un organizador intenta modificar un evento ajeno, se devuelve `403 Forbidden`.
+
+#### Cambiar el estado de un evento
+
+`PATCH /api/events/:id/status`
+
+Requiere autenticación y uno de los siguientes roles:
+
+- `organizer`
+- `admin`
+
+El organizador solamente puede cambiar el estado de sus propios eventos. El administrador puede modificar el estado de cualquier evento.
+
+Cuerpo de la solicitud:
+
+```json
+{
+  "status": "cancelled"
+}
+```
+
+Los estados permitidos son:
+
+- `draft`
+- `published`
+- `cancelled`
+- `finished`
+
+No se permite modificar el estado de un evento que ya se encuentra cancelado.
+
+Tampoco se permite publicar eventos finalizados o cancelados.
+
+Cancelar un evento significa cambiar su estado a `cancelled`. No se elimina físicamente de la base de datos.
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "_id": "665f2a...",
+    "title": "Conferencia de tecnología",
+    "status": "cancelled"
+  }
+}
+```
+
+### Reglas de negocio de eventos
+
+Las validaciones de negocio se implementan en la capa `services`, manteniendo separadas las responsabilidades de rutas, controladores y acceso a datos.
+
+Las principales reglas son:
+
+- La fecha del evento debe ser futura al momento de crearlo.
+- No se permite asignar una fecha pasada al modificar un evento.
+- La capacidad debe ser un número entero mayor que cero.
+- El precio debe ser un número mayor o igual a cero.
+- Los campos `title`, `description`, `category` y `location` son obligatorios.
+- El estado debe pertenecer a los valores permitidos.
+- Al crear un evento, el organizador se obtiene del usuario autenticado.
+- Un organizador no puede modificar eventos pertenecientes a otros usuarios.
+- Un administrador puede modificar eventos de cualquier organizador.
+- Los eventos cancelados no pueden modificarse.
+- La cancelación se realiza mediante un cambio de estado y no mediante la eliminación del registro.
 
 ### Sesiones y usuarios
 
@@ -477,21 +616,25 @@ Respuesta exitosa (`200 OK`):
 
 El sistema utiliza tres roles para controlar el acceso a las funcionalidades:
 
-| Rol | Permisos |
-|---|---|
-| `user` | Consultar eventos publicados y gestionar su propia sesión. |
-| `organizer` | Consultar eventos publicados, crear eventos y modificar o cancelar sus propios eventos. |
-| `admin` | Consultar eventos publicados, crear y modificar cualquier evento, y consultar todos los usuarios. |
+| Acción | `user` | `organizer` | `admin` |
+|---|---|---|---|
+| Consultar eventos públicos | Sí | Sí | Sí |
+| Crear eventos | No | Sí | Sí |
+| Modificar eventos propios | No | Sí | Sí |
+| Modificar eventos ajenos | No | No | Sí |
+| Cambiar el estado de eventos propios | No | Sí | Sí |
+| Cambiar el estado de eventos ajenos | No | No | Sí |
+| Consultar todos los usuarios | No | No | Sí |
 
 El registro público siempre asigna el rol `user`.
 
 La autorización se implementa mediante `authorize.middleware.js`, que recibe los roles permitidos para cada ruta.
 
-El control de propiedad de los eventos se realiza en el controlador: se compara el identificador del organizador del evento con el identificador del usuario autenticado. Los administradores no están sujetos a esta restricción.
+El control de propiedad de los eventos se realiza comparando el identificador del organizador del evento con el identificador del usuario autenticado. Los administradores no están sujetos a esta restricción.
 
 ### Códigos de autorización
 
-- `401 Unauthorized`: la solicitud no cuenta con una autenticación válida.
+- `401 Unauthorized`: la solicitud no cuenta con una autenticación válida, por ejemplo, cuando no existe una cookie de sesión o el JWT es inválido.
 - `403 Forbidden`: el usuario está autenticado, pero no tiene los permisos necesarios para realizar la operación.
 
 ## Autenticación con Passport y JWT
@@ -514,13 +657,18 @@ Las contraseñas se almacenan mediante bcrypt y nunca se guardan en texto plano.
 
 ## Pruebas automatizadas
 
-El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login, gestión de sesiones, autorización por roles y control de propiedad de eventos.
+El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login, gestión de sesiones, autorización por roles, control de propiedad de eventos y reglas de negocio.
 
 Las pruebas se implementan con:
 
 - **Node.js Test Runner:** ejecución y organización de las pruebas.
 - **Supertest:** realización de solicitudes HTTP a la aplicación Express.
 - **Mongoose:** verificación de los datos persistidos en MongoDB.
+
+Los archivos de pruebas se encuentran en la carpeta `test/`:
+
+- `sessions.test.js`
+- `events.test.js`
 
 Para ejecutar las pruebas:
 
@@ -540,19 +688,16 @@ El comando utiliza el archivo `.env.test` para conectarse a la base de datos ind
 - Almacenamiento de la contraseña mediante hash.
 - Rechazo de un email duplicado: `409 Conflict`.
 
-**Inicio de sesión:**
+**Inicio de sesión y gestión de sesiones:**
 
 - Login con credenciales correctas: `200 OK`.
 - Generación de la cookie `currentUser`.
 - Verificación del atributo `HttpOnly`.
 - Rechazo de una contraseña incorrecta: `401 Unauthorized`.
-
-**Gestión de sesiones:**
-
 - Rechazo del acceso a `/api/sessions/current` sin cookie: `401 Unauthorized`.
 - Acceso a `/api/sessions/current` después de un login correcto: `200 OK`.
 - Ausencia de la contraseña en los datos del usuario autenticado.
-- Cierre de sesión mediante logout: `200 OK`.
+- Cierre de sesión mediante logout.
 - Rechazo del acceso a `/api/sessions/current` después del logout: `401 Unauthorized`.
 
 **Autorización para crear eventos:**
@@ -574,12 +719,23 @@ El comando utiliza el archivo `.env.test` para conectarse a la base de datos ind
 - Rechazo de la modificación de un evento ajeno por parte de un organizador: `403 Forbidden`.
 - Modificación permitida de un evento propio por parte de su organizador: `200 OK`.
 - Modificación permitida de un evento ajeno por parte de un administrador: `200 OK`.
+- Rechazo de modificaciones de eventos cancelados.
+
+**Validaciones y reglas de negocio:**
+
+- Rechazo de fechas pasadas al crear eventos.
+- Rechazo de capacidades iguales o inferiores a cero.
+- Rechazo de precios negativos.
+- Validación de estados permitidos.
+- Rechazo de estados no disponibles en el listado público.
+- Rechazo de intentos de volver a publicar eventos finalizados o cancelados.
+- Validación de filtros, paginación y ordenamiento.
 
 Las pruebas utilizan usuarios y eventos específicos para los casos automatizados y eliminan únicamente los registros asociados a dichos usuarios al preparar y finalizar la ejecución.
 
 La conexión a la base de datos de pruebas se verifica antes de realizar operaciones de limpieza, evitando ejecutar estas operaciones sobre la base de datos habitual.
 
-En la última ejecución se verificaron **23 pruebas aprobadas y 0 fallidas**.
+En la última ejecución se verificaron **47 pruebas aprobadas y 0 fallidas**.
 
 ## Proveedores externos futuros
 
@@ -604,6 +760,10 @@ Ejemplo:
 
 Los errores generados durante el procesamiento de las solicitudes se derivan al middleware centralizado ubicado en `src/middlewares/error.middleware.js`.
 
+Los errores de validación de datos se responden con `400 Bad Request`. Los identificadores con formato inválido también se responden con `400 Bad Request`.
+
+Los errores de autenticación y autorización mantienen la diferencia entre `401 Unauthorized` y `403 Forbidden`.
+
 ## Modelos
 
 El proyecto utiliza Mongoose para definir modelos con esquemas y validaciones.
@@ -624,16 +784,25 @@ El esquema incluye campos obligatorios, restricciones de longitud, email único 
 
 El modelo `Event` incluye:
 
-- `title`
-- `description`
-- `date`
-- `location`
-- `capacity`
-- `organizer`
-- `status`
+- `title`: título del evento.
+- `description`: descripción.
+- `category`: categoría.
+- `date`: fecha y hora del evento.
+- `location`: ubicación.
+- `capacity`: capacidad máxima, expresada como un número entero mayor que cero.
+- `price`: precio, que debe ser mayor o igual a cero.
+- `status`: estado del evento.
+- `organizer`: referencia ObjectId al modelo `User`.
 
-El esquema incluye campos obligatorios, restricciones de longitud, validación de capacidad mínima y referencia al usuario organizador.
+El campo `status` permite los siguientes valores:
 
-El campo `status` permite los valores `published` y `cancelled`. Por defecto, los eventos se crean con estado `published`.
+- `draft`
+- `published`
+- `cancelled`
+- `finished`
+
+Por defecto, los eventos se crean con estado `draft`.
+
+El campo `organizer` almacena una referencia al usuario que creó el evento, no el objeto completo del usuario.
 
 Los modelos se encuentran en `src/models/`.

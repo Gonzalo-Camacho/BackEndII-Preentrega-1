@@ -24,13 +24,17 @@ let organizerToken;
 let adminToken;
 let organizerEvent;
 let anotherEvent;
+let cancelledEvent;
+let draftEvent;
 
 const testEventData = {
   title: "Evento de prueba",
   description: "Descripción del evento automatizado",
+  category: "Tecnología",
   date: "2027-06-15T18:00:00.000Z",
   location: "Buenos Aires",
-  capacity: 50
+  capacity: 50,
+  price: 1000
 };
 
 const authCookie = (token) => `currentUser=${token}`;
@@ -79,13 +83,29 @@ before(async () => {
   organizerEvent = await Event.create({
     ...testEventData,
     title: "Evento propio del organizador",
-    organizer: organizer._id
+    organizer: organizer._id,
+    status: "published"
   });
 
   anotherEvent = await Event.create({
     ...testEventData,
     title: "Evento de otro organizador",
-    organizer: user._id
+    organizer: user._id,
+    status: "published"
+  });
+
+  cancelledEvent = await Event.create({
+    ...testEventData,
+    title: "Evento cancelado",
+    organizer: organizer._id,
+    status: "cancelled"
+  });
+
+  draftEvent = await Event.create({
+    ...testEventData,
+    title: "Evento en borrador",
+    organizer: organizer._id,
+    status: "draft"
   });
 });
 
@@ -148,6 +168,58 @@ test("Autorización para crear eventos", async (t) => {
 
     assert.equal(response.status, 401);
   });
+
+  await t.test("No permite crear eventos con fecha pasada", async () => {
+    const response = await request(app)
+      .post("/api/events")
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        ...testEventData,
+        date: "2020-01-01T18:00:00.000Z"
+      });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("No permite crear eventos con capacidad inválida", async () => {
+    const response = await request(app)
+      .post("/api/events")
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        ...testEventData,
+        capacity: 0
+      });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("No permite crear eventos con precio negativo", async () => {
+    const response = await request(app)
+      .post("/api/events")
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        ...testEventData,
+        price: -100
+      });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("El organizador no puede asignarse otro organizador desde el body", async () => {
+    const response = await request(app)
+      .post("/api/events")
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        ...testEventData,
+        organizer: user._id
+      });
+
+    assert.equal(response.status, 201);
+    assert.equal(
+      response.body.payload.organizer.toString(),
+      organizer._id.toString()
+    );
+  });
 });
 
 test("Acceso a la lista de usuarios", async (t) => {
@@ -189,7 +261,7 @@ test("Acceso a la lista de usuarios", async (t) => {
 test("Control de propiedad de eventos", async (t) => {
   await t.test("Un organizador no puede modificar un evento ajeno", async () => {
     const response = await request(app)
-      .patch(`/api/events/${anotherEvent._id}`)
+      .put(`/api/events/${anotherEvent._id}`)
       .set("Cookie", authCookie(organizerToken))
       .send({
         title: "Intento de modificación no autorizado"
@@ -200,7 +272,7 @@ test("Control de propiedad de eventos", async (t) => {
 
   await t.test("Un organizador puede modificar su propio evento", async () => {
     const response = await request(app)
-      .patch(`/api/events/${organizerEvent._id}`)
+      .put(`/api/events/${organizerEvent._id}`)
       .set("Cookie", authCookie(organizerToken))
       .send({
         title: "Evento propio modificado"
@@ -215,7 +287,7 @@ test("Control de propiedad de eventos", async (t) => {
 
   await t.test("Un administrador puede modificar un evento ajeno", async () => {
     const response = await request(app)
-      .patch(`/api/events/${anotherEvent._id}`)
+      .put(`/api/events/${anotherEvent._id}`)
       .set("Cookie", authCookie(adminToken))
       .send({
         title: "Evento modificado por administrador"
@@ -226,5 +298,215 @@ test("Control de propiedad de eventos", async (t) => {
       response.body.payload.title,
       "Evento modificado por administrador"
     );
+  });
+
+  await t.test("No se puede modificar un evento cancelado", async () => {
+    const response = await request(app)
+      .put(`/api/events/${cancelledEvent._id}`)
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        title: "Intento de modificar evento cancelado"
+      });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("No se puede modificar el organizador mediante PUT", async () => {
+    const response = await request(app)
+      .put(`/api/events/${organizerEvent._id}`)
+      .set("Cookie", authCookie(adminToken))
+      .send({
+        organizer: user._id
+      });
+
+    assert.equal(response.status, 200);
+
+    const updatedEvent = await Event.findById(organizerEvent._id);
+
+    assert.equal(
+      updatedEvent.organizer.toString(),
+      organizer._id.toString()
+    );
+  });
+});
+
+test("Consulta pública de eventos", async (t) => {
+  await t.test("Se pueden consultar los eventos publicados", async () => {
+    const response = await request(app)
+      .get("/api/events");
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.status, "success");
+    assert.ok(Array.isArray(response.body.payload));
+
+    assert.ok(
+      response.body.payload.every(
+        (event) => ["published", "finished"].includes(event.status)
+      )
+    );
+  });
+
+  await t.test("Se puede consultar un evento publicado por ID", async () => {
+    const response = await request(app)
+      .get(`/api/events/${organizerEvent._id}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.status, "success");
+    assert.equal(
+      response.body.payload._id,
+      organizerEvent._id.toString()
+    );
+  });
+
+  await t.test("No se puede consultar públicamente un evento en borrador", async () => {
+    const response = await request(app)
+      .get(`/api/events/${draftEvent._id}`);
+
+    assert.equal(response.status, 404);
+  });
+
+  await t.test("No se puede consultar públicamente un evento cancelado", async () => {
+    const response = await request(app)
+      .get(`/api/events/${cancelledEvent._id}`);
+
+    assert.equal(response.status, 404);
+  });
+
+  await t.test("Se puede filtrar por categoría", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ category: "Tecnología" });
+
+    assert.equal(response.status, 200);
+    assert.ok(
+      response.body.payload.every(
+        (event) => event.category === "Tecnología"
+      )
+    );
+  });
+
+  await t.test("Se puede filtrar por ubicación", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ location: "Buenos Aires" });
+
+    assert.equal(response.status, 200);
+    assert.ok(
+      response.body.payload.every(
+        (event) => event.location === "Buenos Aires"
+      )
+    );
+  });
+
+  await t.test("Se puede filtrar por estado publicado", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ status: "published" });
+
+    assert.equal(response.status, 200);
+    assert.ok(
+      response.body.payload.every(
+        (event) => event.status === "published"
+      )
+    );
+  });
+
+  await t.test("No se pueden listar eventos en borrador", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ status: "draft" });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("La respuesta incluye información de paginación", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ page: 1, limit: 2 });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.page, 1);
+    assert.equal(response.body.limit, 2);
+    assert.equal(typeof response.body.total, "number");
+    assert.equal(typeof response.body.totalPages, "number");
+    assert.ok(response.body.payload.length <= 2);
+  });
+
+  await t.test("No permite una página inválida", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ page: 0 });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("No permite un límite superior a 100", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ limit: 101 });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("No permite un criterio de ordenamiento inválido", async () => {
+    const response = await request(app)
+      .get("/api/events")
+      .query({ sort: "password" });
+
+    assert.equal(response.status, 400);
+  });
+});
+
+test("Cambio de estado de eventos", async (t) => {
+  await t.test("Un organizador puede cancelar su evento", async () => {
+    const response = await request(app)
+      .patch(`/api/events/${organizerEvent._id}/status`)
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        status: "cancelled"
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.payload.status, "cancelled");
+  });
+
+  await t.test("No se puede modificar el estado de un evento cancelado", async () => {
+    const response = await request(app)
+      .patch(`/api/events/${organizerEvent._id}/status`)
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        status: "published"
+      });
+
+    assert.equal(response.status, 400);
+  });
+
+  await t.test("Un usuario común no puede cambiar el estado de un evento", async () => {
+    const response = await request(app)
+      .patch(`/api/events/${anotherEvent._id}/status`)
+      .set("Cookie", authCookie(userToken))
+      .send({
+        status: "cancelled"
+      });
+
+    assert.equal(response.status, 403);
+  });
+
+  await t.test("No se puede publicar un evento con estado finalizado", async () => {
+    const finishedEvent = await Event.create({
+      ...testEventData,
+      title: "Evento finalizado",
+      organizer: organizer._id,
+      status: "finished"
+    });
+
+    const response = await request(app)
+      .patch(`/api/events/${finishedEvent._id}/status`)
+      .set("Cookie", authCookie(organizerToken))
+      .send({
+        status: "published"
+      });
+
+    assert.equal(response.status, 400);
   });
 });
