@@ -6,7 +6,7 @@ API REST para una plataforma de eventos e inscripciones, desarrollada con Node.j
 
 Plataforma de Eventos e Inscripciones.
 
-El proyecto implementa una API REST para gestionar eventos, usuarios y sesiones, utilizando una arquitectura organizada por capas.
+El proyecto implementa una API REST para gestionar eventos, usuarios y sesiones, utilizando una arquitectura organizada por capas, autenticación mediante Passport y JWT, y autorización basada en roles.
 
 ## Tecnologías
 
@@ -125,6 +125,11 @@ Las estrategias de autenticación se configuran en `src/config/passport.config.j
 
 El hash y la comparación de contraseñas se realizan mediante helpers ubicados en `src/utils/hash.js`.
 
+La autenticación y autorización se complementan mediante middlewares:
+
+- `auth.middleware.js`: verifica el JWT recibido mediante la cookie `currentUser` y establece la identidad autenticada en `req.user`.
+- `authorize.middleware.js`: verifica que el rol del usuario esté autorizado para acceder al recurso solicitado.
+
 ## Estructura del proyecto
 
 ```text
@@ -144,6 +149,7 @@ BackEndII/
 │   │   └── users.dao.js
 │   ├── middlewares/
 │   │   ├── auth.middleware.js
+│   │   ├── authorize.middleware.js
 │   │   ├── error.middleware.js
 │   │   └── notFound.middleware.js
 │   ├── models/
@@ -162,6 +168,7 @@ BackEndII/
 │       ├── hash.js
 │       └── jwt.js
 ├── test/
+│   ├── events.test.js
 │   └── sessions.test.js
 ├── .env.example
 ├── .gitignore
@@ -189,9 +196,13 @@ Respuesta:
 
 ### Eventos
 
+#### Obtener eventos
+
 `GET /api/events`
 
-Obtiene los eventos mediante la arquitectura por capas.
+No requiere autenticación.
+
+Obtiene los eventos publicados. Los eventos cancelados no se incluyen en el listado público.
 
 Flujo:
 
@@ -213,7 +224,101 @@ Respuesta ilustrativa cuando no hay eventos:
 }
 ```
 
-### Sesiones
+#### Crear evento
+
+`POST /api/events`
+
+Requiere autenticación y uno de los siguientes roles:
+
+- `organizer`
+- `admin`
+
+Cuerpo de la solicitud:
+
+```json
+{
+  "title": "Conferencia de tecnología",
+  "description": "Encuentro sobre desarrollo de software",
+  "date": "2027-06-15T18:00:00.000Z",
+  "location": "Buenos Aires",
+  "capacity": 50
+}
+```
+
+El sistema obtiene el identificador del organizador desde el usuario autenticado. No permite establecer libremente el organizador mediante el cuerpo de la solicitud.
+
+Los eventos se crean inicialmente con estado `published`.
+
+Respuesta exitosa (`201 Created`):
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "_id": "665f2a...",
+    "title": "Conferencia de tecnología",
+    "description": "Encuentro sobre desarrollo de software",
+    "date": "2027-06-15T18:00:00.000Z",
+    "location": "Buenos Aires",
+    "capacity": 50,
+    "organizer": "665f2a...",
+    "status": "published"
+  }
+}
+```
+
+#### Modificar o cancelar evento
+
+`PATCH /api/events/:id`
+
+Requiere autenticación y uno de los siguientes roles:
+
+- `organizer`
+- `admin`
+
+Un organizador solamente puede modificar sus propios eventos. Un administrador puede modificar cualquier evento.
+
+Se pueden enviar únicamente los campos que se desean modificar.
+
+Ejemplo de solicitud:
+
+```json
+{
+  "title": "Conferencia de tecnología actualizada"
+}
+```
+
+Para cancelar un evento, se puede actualizar su estado:
+
+```json
+{
+  "status": "cancelled"
+}
+```
+
+Los estados permitidos son:
+
+- `published`
+- `cancelled`
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "_id": "665f2a...",
+    "title": "Conferencia de tecnología actualizada",
+    "status": "published"
+  }
+}
+```
+
+Si el evento no existe, se devuelve `404 Not Found`.
+
+Si el organizador intenta modificar un evento que pertenece a otro usuario, se devuelve `403 Forbidden`.
+
+### Sesiones y usuarios
 
 #### Obtener sesiones
 
@@ -249,6 +354,8 @@ La estrategia `register` de Passport:
 - Comprueba que el email no esté registrado.
 - Genera un hash de la contraseña con bcrypt.
 - Asigna el rol `user` a los usuarios registrados públicamente.
+
+El rol se asigna desde el servidor, por lo que el cliente no puede registrarse públicamente como `organizer` o `admin` enviando un rol diferente en el cuerpo de la solicitud.
 
 Respuesta exitosa (`201 Created`):
 
@@ -337,6 +444,56 @@ Respuesta exitosa (`200 OK`):
 }
 ```
 
+#### Obtener todos los usuarios
+
+`GET /api/sessions/users`
+
+Requiere autenticación y el rol `admin`.
+
+Permite consultar los usuarios registrados en el sistema.
+
+Los usuarios que no tengan el rol `admin` reciben `403 Forbidden`. Las solicitudes sin autenticación reciben `401 Unauthorized`.
+
+La información devuelta no incluye las contraseñas almacenadas.
+
+Respuesta exitosa (`200 OK`):
+
+```json
+{
+  "status": "success",
+  "payload": [
+    {
+      "_id": "665f2a...",
+      "first_name": "Ana",
+      "last_name": "Pérez",
+      "email": "ana@mail.com",
+      "role": "user"
+    }
+  ]
+}
+```
+
+## Roles y autorización
+
+El sistema utiliza tres roles para controlar el acceso a las funcionalidades:
+
+| Rol | Permisos |
+|---|---|
+| `user` | Consultar eventos publicados y gestionar su propia sesión. |
+| `organizer` | Consultar eventos publicados, crear eventos y modificar o cancelar sus propios eventos. |
+| `admin` | Consultar eventos publicados, crear y modificar cualquier evento, y consultar todos los usuarios. |
+
+El registro público siempre asigna el rol `user`.
+
+La autorización se implementa mediante `authorize.middleware.js`, que recibe los roles permitidos para cada ruta.
+
+El control de propiedad de los eventos se realiza en el controlador: se compara el identificador del organizador del evento con el identificador del usuario autenticado. Los administradores no están sujetos a esta restricción.
+
+### Códigos de autorización
+
+- `401 Unauthorized`: la solicitud no cuenta con una autenticación válida.
+- `403 Forbidden`: el usuario está autenticado, pero no tiene los permisos necesarios para realizar la operación.
+
 ## Autenticación con Passport y JWT
 
 La autenticación se centraliza en `src/config/passport.config.js`. Passport se inicializa en `src/app.js` mediante `passport.initialize()`, después de `cookie-parser`.
@@ -357,7 +514,7 @@ Las contraseñas se almacenan mediante bcrypt y nunca se guardan en texto plano.
 
 ## Pruebas automatizadas
 
-El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login y gestión de sesiones.
+El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login, gestión de sesiones, autorización por roles y control de propiedad de eventos.
 
 Las pruebas se implementan con:
 
@@ -374,8 +531,6 @@ npm test
 El comando utiliza el archivo `.env.test` para conectarse a la base de datos independiente `backendii_test`.
 
 ### Casos cubiertos
-
-Las pruebas verifican los siguientes comportamientos:
 
 **Registro de usuarios:**
 
@@ -400,9 +555,31 @@ Las pruebas verifican los siguientes comportamientos:
 - Cierre de sesión mediante logout: `200 OK`.
 - Rechazo del acceso a `/api/sessions/current` después del logout: `401 Unauthorized`.
 
-Las pruebas utilizan un usuario específico para los casos automatizados y eliminan únicamente los registros asociados a dicho usuario al preparar y finalizar la ejecución.
+**Autorización para crear eventos:**
+
+- Rechazo de la creación de eventos por parte de un usuario común: `403 Forbidden`.
+- Creación de eventos por parte de un organizador: `201 Created`.
+- Creación de eventos por parte de un administrador: `201 Created`.
+- Rechazo de la creación de eventos sin autenticación: `401 Unauthorized`.
+
+**Acceso a la lista de usuarios:**
+
+- Rechazo del acceso por parte de un organizador: `403 Forbidden`.
+- Acceso permitido para un administrador: `200 OK`.
+- Ausencia de contraseñas en los datos devueltos.
+- Rechazo del acceso sin autenticación: `401 Unauthorized`.
+
+**Control de propiedad de eventos:**
+
+- Rechazo de la modificación de un evento ajeno por parte de un organizador: `403 Forbidden`.
+- Modificación permitida de un evento propio por parte de su organizador: `200 OK`.
+- Modificación permitida de un evento ajeno por parte de un administrador: `200 OK`.
+
+Las pruebas utilizan usuarios y eventos específicos para los casos automatizados y eliminan únicamente los registros asociados a dichos usuarios al preparar y finalizar la ejecución.
 
 La conexión a la base de datos de pruebas se verifica antes de realizar operaciones de limpieza, evitando ejecutar estas operaciones sobre la base de datos habitual.
+
+En la última ejecución se verificaron **23 pruebas aprobadas y 0 fallidas**.
 
 ## Proveedores externos futuros
 
@@ -452,7 +629,11 @@ El modelo `Event` incluye:
 - `date`
 - `location`
 - `capacity`
+- `organizer`
+- `status`
 
-El esquema incluye campos obligatorios, restricciones de longitud y validación de capacidad mínima.
+El esquema incluye campos obligatorios, restricciones de longitud, validación de capacidad mínima y referencia al usuario organizador.
+
+El campo `status` permite los valores `published` y `cancelled`. Por defecto, los eventos se crean con estado `published`.
 
 Los modelos se encuentran en `src/models/`.

@@ -1,5 +1,5 @@
 
-import { getSessions } from "../services/sessions.service.js";
+import { getSessions, getUsers } from "../services/sessions.service.js";
 import { generateToken } from "../utils/jwt.js";
 import { NODE_ENV } from "../config/env.config.js";
 
@@ -60,4 +60,17 @@ export const logoutUserController = (req, res) => {
     status: "success",
     message: "Sesión cerrada"
   });
+};
+
+export const getUsersController = async (req, res, next) => {
+  try {
+    const users = await getUsers();
+
+    res.status(200).json({
+      status: "success",
+      payload: users
+    });
+  } catch (error) {
+    next(error);
+  }
 };

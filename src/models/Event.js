@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const eventSchema = new mongoose.Schema(
@@ -29,6 +30,16 @@ const eventSchema = new mongoose.Schema(
       type: Number,
       required: [true, "La capacidad es obligatoria"],
       min: [1, "La capacidad debe ser mayor a 0"]
+    },
+    organizer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true
+    },
+    status: {
+      type: String,
+      enum: ["published", "cancelled"],
+      default: "published"
     }
   },
   {

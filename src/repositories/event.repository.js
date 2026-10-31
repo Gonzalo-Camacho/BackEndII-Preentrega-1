@@ -1,5 +1,23 @@
-import { findAllEvents } from "../dao/event.dao.js";
+
+import {
+  findAllEvents,
+  createEvent,
+  findEventById,
+  updateEvent
+} from "../dao/event.dao.js";
 
 export const getAllEvents = async () => {
   return findAllEvents();
+};
+
+export const saveEvent = async (eventData) => {
+  return createEvent(eventData);
+};
+
+export const getEventById = async (eventId) => {
+  return findEventById(eventId);
+};
+
+export const editEvent = async (eventId, updateData) => {
+  return updateEvent(eventId, updateData);
 };

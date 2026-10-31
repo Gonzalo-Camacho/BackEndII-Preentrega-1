@@ -6,10 +6,21 @@ import {
   registerUserController,
   loginUserController,
   getCurrentUserController,
-  logoutUserController
+  logoutUserController,
+  getUsersController
 } from "../controllers/sessions.controller.js";
 
+import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { authorizeMiddleware } from "../middlewares/authorize.middleware.js";
+
 const router = Router();
+
+router.get(
+  "/users",
+  authMiddleware,
+  authorizeMiddleware("admin"),
+  getUsersController
+);
 
 router.get("/", getSessionsController);
 
