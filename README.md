@@ -21,8 +21,10 @@ El proyecto implementa una API REST para gestionar eventos, usuarios y sesiones,
 - jsonwebtoken
 - cookie-parser
 - Passport.js
-- passport-custom
+- passport-local
 - passport-jwt
+- Supertest
+- Node.js Test Runner
 
 ## Requisitos
 
@@ -62,6 +64,22 @@ JWT_EXPIRES_IN=1h
 Estos valores son ilustrativos. Deben adaptarse a la configuración local, especialmente `MONGO_URL` y `JWT_SECRET`. No se deben publicar credenciales reales.
 
 El archivo `.env` no debe subirse al repositorio. La configuración se centraliza en `src/config/env.config.js`.
+
+### Configuración para pruebas automatizadas
+
+Las pruebas automatizadas utilizan una base de datos independiente de la utilizada por la aplicación.
+
+Crear un archivo `.env.test` en la raíz del proyecto con la siguiente variable:
+
+```env
+MONGO_URL=mongodb://localhost:27017/backendii_test
+```
+
+La URI debe adaptarse a la configuración local de MongoDB. Si se utiliza MongoDB Atlas, debe apuntar a una base de datos llamada `backendii_test`.
+
+Las pruebas verifican que la conexión corresponda a `backendii_test` antes de ejecutar operaciones de limpieza o modificación de datos.
+
+El archivo `.env.test` contiene configuración local y no debe subirse al repositorio.
 
 ## Ejecución
 
@@ -143,6 +161,8 @@ BackEndII/
 │   └── utils/
 │       ├── hash.js
 │       └── jwt.js
+├── test/
+│   └── sessions.test.js
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -264,7 +284,7 @@ Cuerpo de la solicitud:
 }
 ```
 
-La estrategia `login` busca el usuario por email y compara la contraseña con el hash almacenado.
+La estrategia `login` busca el usuario por email y compara la contraseña con el hash almacenado mediante bcrypt.
 
 Respuesta exitosa (`200 OK`):
 
@@ -323,9 +343,11 @@ La autenticación se centraliza en `src/config/passport.config.js`. Passport se 
 
 ### Estrategias configuradas
 
-- **`register` (`passport-custom`):** valida los datos del registro, normaliza el email, comprueba duplicados, genera el hash de la contraseña y asigna el rol `user`.
-- **`login` (`passport-custom`):** valida las credenciales comparando la contraseña enviada con el hash almacenado.
+- **`register` (`passport-local`):** utiliza `LocalStrategy` para validar los datos del registro, normalizar el email, comprobar duplicados, generar el hash de la contraseña y asignar el rol `user`.
+- **`login` (`passport-local`):** utiliza `LocalStrategy` para validar las credenciales y comparar la contraseña enviada con el hash almacenado.
 - **`current` (`passport-jwt`):** extrae el JWT de la cookie `currentUser`, verifica su validez y proporciona los datos de identidad autenticados.
+
+Las estrategias locales utilizan `email` como campo de usuario (`usernameField`) y `password` como campo de contraseña (`passwordField`).
 
 El token se genera mediante `jsonwebtoken` en `src/utils/jwt.js`. Se firma con `JWT_SECRET`, incluye `id`, `email` y `role`, y utiliza la duración configurada por `JWT_EXPIRES_IN`, cuyo valor predeterminado es `1h`.
 
@@ -333,19 +355,56 @@ La cookie utiliza las opciones `HttpOnly` y `SameSite=Lax`; `Secure` se activa e
 
 Las contraseñas se almacenan mediante bcrypt y nunca se guardan en texto plano.
 
-### Pruebas realizadas
+## Pruebas automatizadas
 
-Se verificaron los siguientes casos:
+El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login y gestión de sesiones.
 
-- Registro correcto: `201 Created`.
-- Login correcto: `200 OK`.
-- `/api/sessions/current` con cookie válida: `200 OK`.
-- Logout correcto: `200 OK`.
-- `/api/sessions/current` después del logout: `401 Unauthorized`.
-- Login con contraseña incorrecta: `401 Unauthorized`.
-- Registro con email duplicado: `409 Conflict`.
+Las pruebas se implementan con:
 
-### Proveedores externos futuros
+- **Node.js Test Runner:** ejecución y organización de las pruebas.
+- **Supertest:** realización de solicitudes HTTP a la aplicación Express.
+- **Mongoose:** verificación de los datos persistidos en MongoDB.
+
+Para ejecutar las pruebas:
+
+```bash
+npm test
+```
+
+El comando utiliza el archivo `.env.test` para conectarse a la base de datos independiente `backendii_test`.
+
+### Casos cubiertos
+
+Las pruebas verifican los siguientes comportamientos:
+
+**Registro de usuarios:**
+
+- Registro correcto de un usuario: `201 Created`.
+- Asignación del rol `user`.
+- Ausencia de la contraseña en la respuesta.
+- Almacenamiento de la contraseña mediante hash.
+- Rechazo de un email duplicado: `409 Conflict`.
+
+**Inicio de sesión:**
+
+- Login con credenciales correctas: `200 OK`.
+- Generación de la cookie `currentUser`.
+- Verificación del atributo `HttpOnly`.
+- Rechazo de una contraseña incorrecta: `401 Unauthorized`.
+
+**Gestión de sesiones:**
+
+- Rechazo del acceso a `/api/sessions/current` sin cookie: `401 Unauthorized`.
+- Acceso a `/api/sessions/current` después de un login correcto: `200 OK`.
+- Ausencia de la contraseña en los datos del usuario autenticado.
+- Cierre de sesión mediante logout: `200 OK`.
+- Rechazo del acceso a `/api/sessions/current` después del logout: `401 Unauthorized`.
+
+Las pruebas utilizan un usuario específico para los casos automatizados y eliminan únicamente los registros asociados a dicho usuario al preparar y finalizar la ejecución.
+
+La conexión a la base de datos de pruebas se verifica antes de realizar operaciones de limpieza, evitando ejecutar estas operaciones sobre la base de datos habitual.
+
+## Proveedores externos futuros
 
 La arquitectura podría ampliarse con estrategias Passport para proveedores como Google o GitHub. Esto requeriría configurar las credenciales del proveedor, implementar las rutas y el flujo de autorización, y vincular la identidad externa con un usuario local.
 
