@@ -45,6 +45,16 @@ const eventSchema = new mongoose.Schema(
       }
     },
 
+    reservedSeats: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "Los cupos reservados deben ser un número entero"
+      }
+    },
+
     price: {
       type: Number,
       required: [true, "El precio es obligatorio"],

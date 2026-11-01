@@ -13,3 +13,8 @@ export const findAllUsers = async () => {
     .select("-password")
     .lean();
 };
+export const findUserById = async (userId) => {
+  return User.findById(userId)
+    .select("first_name last_name email role")
+    .lean();
+};

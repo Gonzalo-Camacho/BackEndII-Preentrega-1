@@ -4,9 +4,9 @@ API REST para una plataforma de eventos e inscripciones, desarrollada con Node.j
 
 ## Tema
 
-Plataforma de Eventos e Inscripciones.
+**Plataforma de Eventos e Inscripciones.**
 
-El proyecto implementa una API REST para gestionar eventos, usuarios y sesiones, utilizando una arquitectura organizada por capas, autenticación mediante Passport y JWT, y autorización basada en roles.
+El proyecto implementa una API REST para gestionar eventos, usuarios, sesiones, tickets e inscripciones, utilizando una arquitectura organizada por capas, autenticación mediante Passport y JWT, y autorización basada en roles.
 
 ## Tecnologías
 
@@ -23,6 +23,7 @@ El proyecto implementa una API REST para gestionar eventos, usuarios y sesiones,
 - Passport.js
 - passport-local
 - passport-jwt
+- Nodemailer
 - Supertest
 - Node.js Test Runner
 
@@ -59,27 +60,48 @@ NODE_ENV=development
 MONGO_URL=mongodb://localhost:27017/backendii
 JWT_SECRET=change_this_secret
 JWT_EXPIRES_IN=1h
+
+# Configuración de correo (SMTP)
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_USER=tu_correo@example.com
+MAIL_PASS=tu_contrasena_de_aplicacion
+MAIL_FROM="Plataforma de Eventos <tu_correo@example.com>"
 ```
 
-Estos valores son ilustrativos. Deben adaptarse a la configuración local, especialmente `MONGO_URL` y `JWT_SECRET`. No se deben publicar credenciales reales.
+Los valores son ilustrativos. Deben adaptarse a la configuración local, especialmente `MONGO_URL`, `JWT_SECRET` y las credenciales SMTP.
+
+No se deben publicar credenciales reales.
 
 El archivo `.env` no debe subirse al repositorio. La configuración se centraliza en `src/config/env.config.js`.
+
+Las variables de correo permiten configurar el envío de confirmaciones mediante Nodemailer. Si no están configuradas o el envío falla, la inscripción puede quedar confirmada igualmente, pero el correo no será enviado.
 
 ### Configuración para pruebas automatizadas
 
 Las pruebas automatizadas utilizan una base de datos independiente de la utilizada por la aplicación.
 
-Crear un archivo `.env.test` en la raíz del proyecto con la siguiente variable:
+Para configurar el entorno de pruebas:
+
+1. Crear una copia del archivo `.env.test.example` y nombrarla `.env.test`.
+2. Configurar `MONGO_URL` con la URI de conexión correspondiente a la base de datos `backendii_test`.
+3. Verificar que la base de datos utilizada se llame `backendii_test`.
+
+Ejemplo de configuración:
 
 ```env
-MONGO_URL=mongodb://localhost:27017/backendii_test
+PORT=8081
+NODE_ENV=test
+MONGO_URL=mongodb://127.0.0.1:27017/backendii_test
+JWT_SECRET=clave_de_prueba_no_utilizar_en_produccion
+JWT_EXPIRES_IN=1h
 ```
 
-La URI debe adaptarse a la configuración local de MongoDB. Si se utiliza MongoDB Atlas, debe apuntar a una base de datos llamada `backendii_test`.
+Si se utiliza MongoDB Atlas, reemplazar la URI de ejemplo por la propia, manteniendo el nombre de base de datos `backendii_test`.
 
 Las pruebas verifican que la conexión corresponda a `backendii_test` antes de ejecutar operaciones de limpieza o modificación de datos.
 
-El archivo `.env.test` contiene configuración local y no debe subirse al repositorio.
+El archivo `.env.test` contiene configuración local y no debe subirse al repositorio. La plantilla `.env.test.example` sí se incluye para facilitar la configuración del entorno de pruebas.
 
 ## Ejecución
 
@@ -125,6 +147,8 @@ Las estrategias de autenticación se configuran en `src/config/passport.config.j
 
 El hash y la comparación de contraseñas se realizan mediante helpers ubicados en `src/utils/hash.js`.
 
+El envío de correos electrónicos se centraliza en `src/services/email.service.js`, utilizando Nodemailer.
+
 La autenticación y autorización se complementan mediante middlewares:
 
 - `auth.middleware.js`: verifica el JWT recibido mediante la cookie `currentUser` y establece la identidad autenticada en `req.user`.
@@ -143,9 +167,12 @@ BackEndII/
 │   │   └── passport.config.js
 │   ├── controllers/
 │   │   ├── events.controller.js
-│   │   └── sessions.controller.js
+│   │   ├── sessions.controller.js
+│   │   └── ticket.controller.js
 │   ├── dao/
 │   │   ├── event.dao.js
+│   │   ├── sessions.dao.js
+│   │   ├── ticket.dao.js
 │   │   └── users.dao.js
 │   ├── middlewares/
 │   │   ├── auth.middleware.js
@@ -154,23 +181,33 @@ BackEndII/
 │   │   └── notFound.middleware.js
 │   ├── models/
 │   │   ├── Event.js
+│   │   ├── Ticket.js
 │   │   └── User.js
 │   ├── repositories/
 │   │   ├── event.repository.js
+│   │   ├── sessions.repository.js
+│   │   ├── ticket.repository.js
 │   │   └── users.repository.js
 │   ├── routes/
 │   │   ├── events.router.js
-│   │   └── sessions.router.js
+│   │   ├── sessions.router.js
+│   │   └── tickets.router.js
 │   ├── services/
+│   │   ├── email.service.js
 │   │   ├── events.service.js
-│   │   └── sessions.service.js
+│   │   ├── sessions.service.js
+│   │   └── ticket.service.js
 │   └── utils/
+│       ├── .gitkeep
 │       ├── hash.js
 │       └── jwt.js
 ├── test/
+│   ├── email.test.js
 │   ├── events.test.js
-│   └── sessions.test.js
+│   ├── sessions.test.js
+│   └── tickets.test.js
 ├── .env.example
+├── .env.test.example
 ├── .gitignore
 ├── package.json
 ├── package-lock.json
@@ -292,6 +329,7 @@ Respuesta exitosa (`200 OK`):
     "date": "2027-06-15T18:00:00.000Z",
     "location": "Buenos Aires",
     "capacity": 50,
+    "reservedSeats": 0,
     "price": 1000,
     "status": "published",
     "organizer": "665f2a..."
@@ -343,6 +381,7 @@ Respuesta exitosa (`201 Created`):
     "date": "2027-06-15T18:00:00.000Z",
     "location": "Buenos Aires",
     "capacity": 50,
+    "reservedSeats": 0,
     "price": 1000,
     "status": "draft",
     "organizer": "665f2a..."
@@ -439,6 +478,145 @@ Respuesta exitosa (`200 OK`):
 }
 ```
 
+### Tickets e inscripciones
+
+Las rutas de tickets permiten gestionar las inscripciones de los usuarios a los eventos.
+
+| Método | Endpoint | Acceso | Descripción |
+|---|---|---|---|
+| POST | `/api/events/:eid/tickets` | Usuario autenticado | Inscribe al usuario en un evento. |
+| GET | `/api/tickets/my-tickets` | Usuario autenticado | Lista las inscripciones del usuario autenticado. |
+| GET | `/api/events/:eid/tickets` | Organizador propietario o administrador | Lista las inscripciones de un evento. |
+| PATCH | `/api/tickets/:tid/cancel` | Propietario del ticket o administrador | Cancela una inscripción. |
+
+#### Crear una inscripción
+
+`POST /api/events/:eid/tickets`
+
+Requiere autenticación.
+
+Cuerpo de la solicitud:
+
+```json
+{
+  "quantity": 2
+}
+```
+
+La inscripción se confirma si se cumplen las siguientes condiciones:
+
+- El evento existe.
+- El evento se encuentra publicado.
+- La fecha del evento todavía no pasó.
+- La cantidad solicitada es un número entero mayor que cero.
+- Hay suficientes cupos disponibles.
+- El usuario no tiene otra inscripción activa para ese evento.
+
+La reserva de cupos se realiza mediante una operación atómica en la base de datos, evitando superar la capacidad máxima del evento ante solicitudes simultáneas.
+
+Al confirmar la inscripción, se crea un ticket con un código de reserva único y se intenta enviar un correo electrónico de confirmación.
+El ticket se registra inicialmente con estado confirmed y mantiene una referencia al usuario y al evento.
+
+Respuesta exitosa (`201 Created`):
+
+El resultado incluye la información del ticket creado y un mensaje que indica si el correo de confirmación pudo enviarse.
+
+#### Consultar mis inscripciones
+
+`GET /api/tickets/my-tickets`
+
+Requiere autenticación.
+
+Devuelve únicamente los tickets asociados al usuario autenticado, incluyendo información del evento, como título, fecha y ubicación.
+
+#### Consultar inscripciones de un evento
+
+`GET /api/events/:eid/tickets`
+
+Requiere autenticación.
+
+Permite consultar las inscripciones de un evento únicamente al organizador propietario del evento o a un administrador.
+
+La información incluye datos del usuario asociado a cada ticket.
+
+#### Cancelar una inscripción
+
+`PATCH /api/tickets/:tid/cancel`
+
+Requiere autenticación.
+
+Permite cancelar una inscripción propia o, en el caso de un administrador, cualquier inscripción.
+
+La cancelación modifica el estado del ticket a `cancelled` y registra la fecha en `cancelledAt`.
+
+El registro no se elimina de la base de datos. Al cambiar su estado a `cancelled`, deja de contabilizarse como una inscripción activa y sus cupos quedan disponibles para nuevas inscripciones.
+
+### Estados de los tickets
+
+El modelo `Ticket` contempla los siguientes estados:
+
+| Estado | Descripción |
+|---|---|
+| `confirmed` | Inscripción confirmada. |
+| `pending` | Inscripción pendiente. |
+| `cancelled` | Inscripción cancelada. |
+
+Actualmente, el flujo de inscripción crea los tickets directamente con estado confirmed. El estado pending está contemplado en el modelo y se considera activo, aunque no se utiliza en el proceso actual de inscripción.
+
+Los tickets con estado confirmed o pending se consideran activos a efectos de impedir inscripciones duplicadas.
+
+En el flujo actual, las inscripciones se crean directamente con estado confirmed. La cantidad de cupos reservados se incrementa al confirmar una inscripción y se reduce cuando se cancela el ticket. Los tickets cancelados no se consideran inscripciones activas.
+
+### Control de cupos y reglas de negocio
+
+Las validaciones de inscripción se implementan en la capa `services`.
+
+Las principales reglas son:
+
+- No se permiten inscripciones a eventos inexistentes.
+- No se permiten inscripciones a eventos que no estén publicados.
+- No se permiten inscripciones a eventos cuya fecha ya pasó.
+- La cantidad solicitada debe ser un número entero mayor que cero.
+- No se puede superar la capacidad máxima del evento.
+- Un usuario no puede tener más de un ticket activo para el mismo evento.
+- Una inscripción cancelada no impide que el usuario vuelva a inscribirse.
+- Los tickets cancelados no se contabilizan como cupos ocupados.
+
+El modelo `Event` incorpora el campo `reservedSeats`, que registra la cantidad de lugares reservados.
+
+La reserva de cupos utiliza una actualización condicional en la base de datos para comprobar la disponibilidad antes de incrementar el contador.
+
+Al cancelar un ticket, se libera la cantidad de cupos correspondiente.
+
+La cancelación conserva el registro del ticket y permite mantener el historial de inscripciones.
+
+### Envío de correos electrónicos
+
+El servicio de correo se implementa en `src/services/email.service.js`, utilizando Nodemailer.
+
+Cuando se confirma una inscripción y se crea el ticket, la aplicación intenta enviar un correo electrónico al usuario con los siguientes datos:
+
+- Nombre del usuario.
+- Nombre del evento.
+- Fecha del evento.
+- Ubicación del evento.
+- Cantidad de entradas.
+- Código de reserva.
+
+La conexión SMTP se configura mediante variables de entorno:
+
+| Variable | Descripción |
+|---|---|
+| `MAIL_HOST` | Servidor SMTP. |
+| `MAIL_PORT` | Puerto SMTP. |
+| `MAIL_USER` | Usuario de autenticación SMTP. |
+| `MAIL_PASS` | Contraseña o clave de aplicación SMTP. |
+| `MAIL_FROM` | Remitente del correo. |
+
+Las credenciales no se almacenan directamente en el código.
+
+Si ocurre un error durante el envío, la inscripción permanece confirmada y los cupos reservados no se liberan. La respuesta informa que el correo no pudo enviarse.
+
 ### Reglas de negocio de eventos
 
 Las validaciones de negocio se implementan en la capa `services`, manteniendo separadas las responsabilidades de rutas, controladores y acceso a datos.
@@ -477,7 +655,7 @@ Cuerpo de la solicitud:
 {
   "first_name": "Ana",
   "last_name": "Pérez",
-  "email": "Ana@Mail.com ",
+  "email": "ana@mail.com",
   "password": "Secreta123"
 }
 ```
@@ -624,13 +802,23 @@ El sistema utiliza tres roles para controlar el acceso a las funcionalidades:
 | Modificar eventos ajenos | No | No | Sí |
 | Cambiar el estado de eventos propios | No | Sí | Sí |
 | Cambiar el estado de eventos ajenos | No | No | Sí |
+| Inscribirse a eventos | Sí | Sí | Sí |
+| Consultar tickets propios | Sí | Sí | Sí |
+| Consultar tickets de un evento propio | No | Sí | Sí |
+| Consultar tickets de cualquier evento | No | No | Sí |
+| Cancelar tickets propios | Sí | Sí | Sí |
+| Cancelar tickets de otros usuarios | No | No | Sí |
 | Consultar todos los usuarios | No | No | Sí |
 
 El registro público siempre asigna el rol `user`.
 
-La autorización se implementa mediante `authorize.middleware.js`, que recibe los roles permitidos para cada ruta.
+La autorización se implementa mediante middlewares y validaciones en la capa de servicios:
 
-El control de propiedad de los eventos se realiza comparando el identificador del organizador del evento con el identificador del usuario autenticado. Los administradores no están sujetos a esta restricción.
+auth.middleware.js: verifica el JWT recibido mediante la cookie currentUser y establece la identidad autenticada en req.user.
+
+authorize.middleware.js: permite restringir el acceso a determinadas rutas según los roles del usuario.
+
+Los servicios de eventos y tickets realizan las comprobaciones de propiedad correspondientes, verificando que el usuario autenticado sea el propietario del recurso. Los administradores pueden acceder sin estar sujetos a estas restricciones de propiedad.
 
 ### Códigos de autorización
 
@@ -657,7 +845,7 @@ Las contraseñas se almacenan mediante bcrypt y nunca se guardan en texto plano.
 
 ## Pruebas automatizadas
 
-El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login, gestión de sesiones, autorización por roles, control de propiedad de eventos y reglas de negocio.
+El proyecto incorpora pruebas automatizadas para verificar el funcionamiento de los endpoints de registro, login, gestión de sesiones, autorización por roles, eventos, tickets, inscripciones, cancelaciones y envío de correos.
 
 Las pruebas se implementan con:
 
@@ -667,8 +855,10 @@ Las pruebas se implementan con:
 
 Los archivos de pruebas se encuentran en la carpeta `test/`:
 
-- `sessions.test.js`
+- `email.test.js`
 - `events.test.js`
+- `sessions.test.js`
+- `tickets.test.js`
 
 Para ejecutar las pruebas:
 
@@ -700,42 +890,44 @@ El comando utiliza el archivo `.env.test` para conectarse a la base de datos ind
 - Cierre de sesión mediante logout.
 - Rechazo del acceso a `/api/sessions/current` después del logout: `401 Unauthorized`.
 
-**Autorización para crear eventos:**
+**Gestión de eventos:**
 
-- Rechazo de la creación de eventos por parte de un usuario común: `403 Forbidden`.
-- Creación de eventos por parte de un organizador: `201 Created`.
-- Creación de eventos por parte de un administrador: `201 Created`.
-- Rechazo de la creación de eventos sin autenticación: `401 Unauthorized`.
-
-**Acceso a la lista de usuarios:**
-
-- Rechazo del acceso por parte de un organizador: `403 Forbidden`.
-- Acceso permitido para un administrador: `200 OK`.
-- Ausencia de contraseñas en los datos devueltos.
-- Rechazo del acceso sin autenticación: `401 Unauthorized`.
-
-**Control de propiedad de eventos:**
-
-- Rechazo de la modificación de un evento ajeno por parte de un organizador: `403 Forbidden`.
-- Modificación permitida de un evento propio por parte de su organizador: `200 OK`.
-- Modificación permitida de un evento ajeno por parte de un administrador: `200 OK`.
-- Rechazo de modificaciones de eventos cancelados.
-
-**Validaciones y reglas de negocio:**
-
-- Rechazo de fechas pasadas al crear eventos.
-- Rechazo de capacidades iguales o inferiores a cero.
-- Rechazo de precios negativos.
-- Validación de estados permitidos.
-- Rechazo de estados no disponibles en el listado público.
-- Rechazo de intentos de volver a publicar eventos finalizados o cancelados.
+- Creación de eventos por parte de organizadores y administradores.
+- Rechazo de operaciones sin autenticación.
+- Control de propiedad de eventos.
+- Validación de fechas, capacidad, precio y estados.
 - Validación de filtros, paginación y ordenamiento.
+- Restricciones para modificar eventos cancelados o finalizados.
 
-Las pruebas utilizan usuarios y eventos específicos para los casos automatizados y eliminan únicamente los registros asociados a dichos usuarios al preparar y finalizar la ejecución.
+**Inscripciones y tickets:**
+
+- Rechazo de inscripciones sin autenticación: `401 Unauthorized`.
+- Rechazo de eventos inexistentes: `404 Not Found`.
+- Rechazo de eventos cancelados, finalizados o con fecha pasada.
+- Validación de cantidades inválidas.
+- Creación de inscripciones y actualización de cupos.
+- Rechazo de inscripciones duplicadas activas.
+- Rechazo de inscripciones cuando no hay cupos suficientes.
+- Consulta de tickets propios.
+- Restricción de consulta de tickets de eventos a organizadores propietarios y administradores.
+- Restricción de acceso a tickets ajenos: `403 Forbidden`.
+- Cancelación de inscripciones propias.
+- Cancelación de inscripciones por parte de administradores.
+- Rechazo de cancelaciones repetidas.
+- Liberación de cupos al cancelar.
+- Posibilidad de volver a inscribirse después de cancelar.
+
+**Correo electrónico:**
+
+- Verificación de los datos del correo de confirmación.
+- Comprobación del destinatario, asunto y contenido.
+- Uso de un transporte simulado para las pruebas automatizadas, sin enviar correos reales.
+
+Las pruebas utilizan usuarios y eventos específicos para los casos automatizados. Al preparar y finalizar la ejecución, se eliminan únicamente los registros asociados a esos datos de prueba.
 
 La conexión a la base de datos de pruebas se verifica antes de realizar operaciones de limpieza, evitando ejecutar estas operaciones sobre la base de datos habitual.
 
-En la última ejecución se verificaron **47 pruebas aprobadas y 0 fallidas**.
+En la última ejecución se verificaron **76 pruebas aprobadas y 0 fallidas**.
 
 ## Proveedores externos futuros
 
@@ -770,28 +962,29 @@ El proyecto utiliza Mongoose para definir modelos con esquemas y validaciones.
 
 ### User
 
-El modelo `User` incluye:
+El modelo `User` incluye los siguientes campos:
 
-- `first_name`
-- `last_name`
-- `email`
-- `password`
-- `role`
+- `first_name`: obligatorio, entre 2 y 50 caracteres.
+- `last_name`: obligatorio, entre 2 y 50 caracteres.
+- `email`: obligatorio, único, convertido a minúsculas y sin espacios externos.
+- `password`: obligatoria, con una longitud mínima de 6 caracteres.
+- `role`: admite únicamente `user`, `organizer` y `admin`. Su valor predeterminado es `user`.
 
-El esquema incluye campos obligatorios, restricciones de longitud, email único y normalizado, longitud mínima de contraseña y valores permitidos para el rol (`user`, `organizer`, `admin`). El rol predeterminado es `user`.
+El esquema utiliza `timestamps` para registrar las fechas de creación (`createdAt`) y última actualización (`updatedAt`).
 
 ### Event
 
 El modelo `Event` incluye:
 
-- `title`: título del evento.
-- `description`: descripción.
-- `category`: categoría.
-- `date`: fecha y hora del evento.
-- `location`: ubicación.
+- `title`: obligatorio, entre 3 y 100 caracteres.
+- `description`: obligatoria, máximo 500 caracteres.
+- `category`: categoría obligatoria.
+- `date`: fecha y hora obligatorias.
+- `location`: ubicación obligatoria, máximo 200 caracteres.
 - `capacity`: capacidad máxima, expresada como un número entero mayor que cero.
-- `price`: precio, que debe ser mayor o igual a cero.
-- `status`: estado del evento.
+- `reservedSeats`: cantidad de lugares reservados; entero, mínimo 0 y predeterminado en 0.
+- `price`: precio obligatorio, mayor o igual a cero.
+- `status`: estado del evento (`draft`, `published`, `cancelled` o `finished`).
 - `organizer`: referencia ObjectId al modelo `User`.
 
 El campo `status` permite los siguientes valores:
@@ -804,5 +997,26 @@ El campo `status` permite los siguientes valores:
 Por defecto, los eventos se crean con estado `draft`.
 
 El campo `organizer` almacena una referencia al usuario que creó el evento, no el objeto completo del usuario.
+
+El campo `reservedSeats` permite llevar el control de los cupos ocupados por las inscripciones activas.
+
+### Ticket
+
+El modelo `Ticket` representa la inscripción de un usuario a un evento.
+
+Incluye los siguientes campos:
+
+- `user`: referencia ObjectId al modelo `User`.
+- `event`: referencia ObjectId al modelo `Event`.
+- `status`: estado del ticket (`confirmed`, `pending` o `cancelled`). Su valor predeterminado es `confirmed`.
+- `quantity`: cantidad de entradas solicitadas, expresada como un número entero mayor que cero.
+- `reservationCode`: código único de reserva.
+- `cancelledAt`: fecha de cancelación, cuando corresponda.
+- `createdAt`: fecha de creación.
+- `updatedAt`: fecha de última modificación.
+
+Las relaciones con usuarios y eventos se almacenan mediante referencias ObjectId, sin utilizar objetos embebidos.
+
+El modelo incorpora un índice único parcial para impedir que un usuario tenga más de un ticket activo para el mismo evento. Los tickets cancelados quedan excluidos de esta restricción.
 
 Los modelos se encuentran en `src/models/`.

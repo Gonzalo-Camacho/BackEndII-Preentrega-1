@@ -98,3 +98,45 @@ export const updateEvent = async (eventId, updateData) => {
     runValidators: true
   });
 };
+
+export const reserveEventSeats = async (eventId, quantity) => {
+  return Event.findOneAndUpdate(
+    {
+      _id: eventId,
+      status: "published",
+      date: { $gt: new Date() },
+      $expr: {
+        $lte: [
+          {
+            $add: [
+              { $ifNull: ["$reservedSeats", 0] },
+              quantity
+            ]
+          },
+          "$capacity"
+        ]
+      }
+    },
+    {
+      $inc: { reservedSeats: quantity }
+    },
+    {
+      returnDocument: "after"
+    }
+  );
+};
+
+export const releaseEventSeats = async (eventId, quantity) => {
+  return Event.findOneAndUpdate(
+    {
+      _id: eventId,
+      reservedSeats: { $gte: quantity }
+    },
+    {
+      $inc: { reservedSeats: -quantity }
+    },
+    {
+      returnDocument: "after"
+    }
+  );
+};

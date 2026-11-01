@@ -2,7 +2,9 @@ import {
   findAllEvents,
   createEvent,
   findEventById,
-  updateEvent
+  updateEvent,
+  reserveEventSeats,
+  releaseEventSeats
 } from "../dao/event.dao.js";
 
 export const getAllEvents = async (filters = {}) => {
@@ -19,4 +21,12 @@ export const getEventById = async (eventId) => {
 
 export const editEvent = async (eventId, updateData) => {
   return updateEvent(eventId, updateData);
+};
+
+export const reserveSeatsRepository = async (eventId, quantity) => {
+  return reserveEventSeats(eventId, quantity);
+};
+
+export const releaseSeatsRepository = async (eventId, quantity) => {
+  return releaseEventSeats(eventId, quantity);
 };
